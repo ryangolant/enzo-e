@@ -1,12 +1,15 @@
  Adapt : {
-     density : {
-         field_list = ( "density" );
-         max_coarsen = 0.000000000000000;
-         min_refine = 0.0009000000000000000;
-         type = "density";
+     list = ( "mass_dark" );
+     mass_dark : {
+         field_list = ( "density_particle_accumulate" );
+         mass_type = "dark";
+         max_coarsen = 0.1250000000000000;
+         min_refine = 1.000000000000000;
+         type = "mass";
      };
-     list = ( "density" );
-     max_level = 0;
+     max_initial_level = 0;
+     max_level = 2;
+     min_level = 0;
  }
 
  Boundary : {
@@ -20,64 +23,138 @@
 
  Field : {
      alignment = 8;
-     gamma = 1.400000000000000;
-     ghost_depth = 1;
-     list = ( "density", "acceleration_x", "acceleration_y", "acceleration_z" );
+     gamma = 1.666700000000000;
+     ghost_depth = 3;
+     history = 1;
+     list = ( "density", "velocity_x", "velocity_y", "velocity_z", "acceleration_x", "acceleration_y", "acceleration_z", "total_energy", "internal_energy", "pressure", "density_total", "X", "B", "potential", "density_gas", "density_particle", "density_particle_accumulate" );
      padding = 0;
  }
 
  Initial : {
-     list = ( "value" );
-     value : {
-         acceleration_x = ( 0.000000000000000 );
-         acceleration_y = ( 0.000000000000000 );
-         acceleration_z = ( 0.000000000000000 );
-         density = ( 1.000001000000000, " x  >=  0.5000000000000000 ", 0.9999990000000000 );
+     hdf5 : {
+         PVX : {
+             attribute = "vx";
+             dataset = "ParticleVelocities_x";
+             file = "input/Cosmology/dm_uni_level5.enzo/ParticleVelocities_x";
+             name = "dark";
+             type = "particle";
+         };
+         PVY : {
+             attribute = "vy";
+             dataset = "ParticleVelocities_y";
+             file = "input/Cosmology/dm_uni_level5.enzo/ParticleVelocities_y";
+             name = "dark";
+             type = "particle";
+         };
+         PVZ : {
+             attribute = "vz";
+             dataset = "ParticleVelocities_z";
+             file = "input/Cosmology/dm_uni_level5.enzo/ParticleVelocities_z";
+             name = "dark";
+             type = "particle";
+         };
+         PX : {
+             attribute = "x";
+             dataset = "ParticleDisplacements_x";
+             file = "input/Cosmology/dm_uni_level5.enzo/ParticleDisplacements_x";
+             name = "dark";
+             type = "particle";
+         };
+         PY : {
+             attribute = "y";
+             dataset = "ParticleDisplacements_y";
+             file = "input/Cosmology/dm_uni_level5.enzo/ParticleDisplacements_y";
+             name = "dark";
+             type = "particle";
+         };
+         PZ : {
+             attribute = "z";
+             dataset = "ParticleDisplacements_z";
+             file = "input/Cosmology/dm_uni_level5.enzo/ParticleDisplacements_z";
+             name = "dark";
+             type = "particle";
+         };
+         file_list = ( "PX", "PY", "PZ", "PVX", "PVY", "PVZ" );
+         format = "music";
      };
+     list = ( "hdf5", "cosmology" );
+     new = true;
  }
 
  Mesh : {
-     root_blocks = ( 1, 1, 1 );
+     root_blocks = ( 4, 4, 4 );
      root_rank = 3;
      root_size = ( 32, 32, 32 );
  }
 
  Method : {
-     list = ( "multipole" );
+     list = ( "comoving_expansion", "cosmology", "multipole", "pm_update" );
      multipole : {
-         eps0 = 0.000000000000000;
+         eps0 = 0.03125000000000000;
          interp_xpoints = 64;
          interp_ypoints = 64;
          interp_zpoints = 64;
-         r0 = 0.000000000000000;
-         theta = 0.0001000000000000000;
+         theta = 0.5000000000000000;
      };
  }
 
  Output : {
-     list = (  );
+     dark : {
+         dir = ( "FMM_DM_ML2_REF1-LEVEL5-64BLOCKS-THETA05-INTERP64-%04d", "count" );
+         image_lower = ( 0.000000000000000, 0.000000000000000, 0.5000000000000000 );
+         image_size = ( 256, 256 );
+         image_type = "data";
+         image_upper = ( 1.000000000000000, 1.000000000000000, 0.5000000000000000 );
+         name = ( "fmm-dm-uni-level5-dark-%02d.png", "count" );
+         particle_list = ( "dark" );
+         schedule : {
+             step = 10;
+             var = "cycle";
+         };
+         type = "image";
+     };
+     hdf5 : {
+         dir = ( "FMM_DM_ML2_REF1-LEVEL5-64BLOCKS-THETA05-INTERP64-%04d", "count" );
+         field_list = ( "density" );
+         name = ( "fmm-dm-uni-level5-data-%02d-%02d.h5", "proc", "count" );
+         particle_list = ( "dark" );
+         schedule : {
+             step = 10;
+             var = "cycle";
+         };
+         type = "data";
+     };
+     list = ( "dark", "hdf5" );
  }
 
  Particle : {
-     list = ( "star", "trace" );
-     star : {
-         attributes = ( "x", "double", "y", "double", "z", "double", "ax", "double", "ay", "double", "az", "double", "mass", "double" );
+     dark : {
+         attributes = ( "x", "default", "y", "default", "z", "default", "vx", "default", "vy", "default", "vz", "default", "ax", "default", "ay", "default", "az", "default", "is_local", "default" );
+         constants = ( "mass", "default", 3.051757800000000e-05 );
          group_list = ( "is_gravitating" );
          position = ( "x", "y", "z" );
+         velocity = ( "vx", "vy", "vz" );
      };
-     trace : {
-         attributes = ( "x", "double", "y", "double", "z", "double", "ax", "double", "ay", "double", "az", "double" );
-         position = ( "x", "y", "z" );
-     };
+     list = ( "dark" );
+     mass_is_mass = true;
  }
 
  Physics : {
-     gravity : {
-         grav_const_codeU = 0.7853981633974483;
+     cosmology : {
+         comoving_box_size = 32.00000000000000;
+         final_redshift = 0.000000000000000;
+         hubble_constant_now = 0.6777000000000000;
+         initial_redshift = 50.00000000000000;
+         max_expansion_rate = 0.01500000000000000;
+         omega_baryon_now = 0.000000000000000;
+         omega_cdm_now = 0.3050000000000000;
+         omega_lambda_now = 0.6950000000000000;
+         omega_matter_now = 0.3050000000000000;
      };
-     list = ( "gravity" );
+     list = ( "cosmology", "gravity" );
  }
 
  Stopping : {
-     cycle = 1;
+     cycle = 10000;
+     redshift = 0.000000000000000;
  }

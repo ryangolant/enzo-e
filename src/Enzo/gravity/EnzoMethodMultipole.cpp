@@ -17,17 +17,17 @@ EnzoMethodMultipole::EnzoMethodMultipole (ParameterGroup p)
   : Method(),
     theta_(p.value_float("theta", 0.0)),
     eps0_(p.value_float("eps0", 0.0)),
-    r0_(p.value_float("r0", 0.0)),
+    // r0_(p.value_float("r0", 0.0)),
     is_volume_(-1),
     block_volume_(),
     max_volume_(0),
     interp_xpoints_(p.value_integer("interp_xpoints", 64)),
-    interp_ypoints_(p.value_integer("interp_ypoints", 2)),
-    interp_zpoints_(p.value_integer("interp_zpoints", 2)),
+    interp_ypoints_(p.value_integer("interp_ypoints", 64)),
+    interp_zpoints_(p.value_integer("interp_zpoints", 64)),
     dt_max_(p.value_float("dt_max", 1.0e10)),
     ir_exit_(-1)
 {
-  CkPrintf("Have we started?");
+  // CkPrintf("Have we started?");
 
   cello::define_field ("density");
   cello::define_field ("acceleration_x");
@@ -107,7 +107,7 @@ void EnzoMethodMultipole::pup (PUP::er &p)
 
   p | theta_;
   p | eps0_;
-  p | r0_;
+  // p | r0_;
   p | is_volume_;
   p | block_volume_;
   p | max_volume_;
@@ -168,6 +168,34 @@ void EnzoMethodMultipole::compute ( Block * block) throw()
       c3[i] = 0;
   }
 
+
+  // reset cell accelerations to zero
+  Field field = block->data()->field();
+  
+  enzo_float * accel_x = (enzo_float*) field.values ("acceleration_x");
+  enzo_float * accel_y = (enzo_float*) field.values ("acceleration_y");
+  enzo_float * accel_z = (enzo_float*) field.values ("acceleration_z");
+
+  int mx, my, mz;
+  int gx, gy, gz;
+  field.dimensions  (0, &mx, &my, &mz);
+  field.ghost_depth (0, &gx, &gy, &gz);
+
+  for (int iz = gz; iz < mz-gz; iz++) {
+    for (int iy = gy; iy < my-gy; iy++) {
+      for (int ix = gx; ix < mx-gx; ix++) {
+
+        int i = ix + mx * (iy + iz * my);
+        
+        accel_x[i] = 0;
+        accel_y[i] = 0;
+        accel_z[i] = 0;
+
+      }
+    }
+  }
+
+
   // Allocate and initialize block_volume_[level - min_level] to store
   // weighted volume of blocks in different levels relative to the finest
   // (for the time being, I've set min_level = 0)
@@ -195,14 +223,83 @@ void EnzoMethodMultipole::compute ( Block * block) throw()
   // for testing with particles, we initialize particles in leaf Blocks  
   // if (block->is_leaf()) {
 
-  //   int nprtls = 2; // number of particles
+  //   int nprtls = 64; // number of particles
+  //   double prtls[nprtls][7]; // particle attributes
 
   //   // attributes: mass, x, y, z, ax, ay, az
-  //   double prtls[nprtls][7] = {{10.0, 0.0, 0.0, 0.5, 0, 0, 0},
-  //                              {0.0, 0.01, 0.01, 0.5, 0, 0, 0}};
+  //   // double prtls[nprtls][7] = {{1.0, 0.25, 0.25, 0.25, 0, 0, 0},
+  //   //                            {1.0, 0.25, 0.75, 0.25, 0, 0, 0},
+  //   //                            {1.0, 0.75, 0.25, 0.25, 0, 0, 0},
+  //   //                            {1.0, 0.75, 0.75, 0.25, 0, 0, 0},
+  //   //                            {1.0, 0.25, 0.25, 0.75, 0, 0, 0},
+  //   //                            {1.0, 0.25, 0.75, 0.75, 0, 0, 0},
+  //   //                            {1.0, 0.75, 0.25, 0.75, 0, 0, 0},
+  //   //                            {1.0, 0.75, 0.75, 0.75, 0, 0, 0}};
+    
+  //   for (int i = 0; i < 4; i++) {
+  //     for (int j = 0; j < 4; j++) {
+  //       for (int k = 0; k < 4; k++) {
+  //         int ip = i + 4 * (j + 4 * k);
+  //         prtls[ip][0] = 1.0; 
+  //         prtls[ip][1] = 0.125 + i * 0.25;
+  //         prtls[ip][2] = 0.125 + j * 0.25;
+  //         prtls[ip][3] = 0.125 + k * 0.25;
+  //         prtls[ip][4] = 0;
+  //         prtls[ip][5] = 0;
+  //         prtls[ip][6] = 0;
+  //       }
+  //     }
+  //   }
+
+  //   // for (int i = 0; i < 2; i++) {
+  //   //   for (int j = 0; j < 2; j++) {
+  //   //     for (int k = 0; k < 2; k++) {
+  //   //       int ip = i + 2 * (j + 2 * k);
+  //   //       prtls[ip][0] = 1.0; 
+  //   //       prtls[ip][1] = 0.25 + i * 0.5;
+  //   //       prtls[ip][2] = 0.25 + j * 0.5;
+  //   //       prtls[ip][3] = 0.25 + k * 0.5;
+  //   //       prtls[ip][4] = 0;
+  //   //       prtls[ip][5] = 0;
+  //   //       prtls[ip][6] = 0;
+  //   //     }
+  //   //   }
+  //   // }
                                
   //   InitializeParticles(block, nprtls, prtls);
   // }
+
+  // reset particle accelerations to zero
+  Particle particle = block->data()->particle();
+  const int num_prtl_types = particle.num_types();
+
+  for (int it = 0; it < num_prtl_types; it++) {
+    
+    for (int ib = 0; ib < particle.num_batches(it); ib++) {
+
+      const int np = particle.num_particles(it,ib);
+
+      const int ia_ax  = particle.attribute_index(it,"ax");
+      const int ia_ay  = particle.attribute_index(it,"ay");
+      const int ia_az  = particle.attribute_index(it,"az");
+
+      enzo_float * axa =  (enzo_float *)particle.attribute_array (it,ia_ax,ib);
+      enzo_float * aya =  (enzo_float *)particle.attribute_array (it,ia_ay,ib);
+      enzo_float * aza =  (enzo_float *)particle.attribute_array (it,ia_az,ib);
+
+      const int dax =  particle.stride(it,ia_ax);
+      const int day =  particle.stride(it,ia_ay);
+      const int daz =  particle.stride(it,ia_az);
+
+      for (int ip=0; ip < np; ip++) {
+        // CkPrintf("particle accel in compute: %.9f, %.9f, %.9f\n", axa[ip*dax], aya[ip*day], aza[ip*daz]);
+        axa[ip*dax] = 0;
+        aya[ip*day] = 0;
+        aza[ip*daz] = 0;
+
+      }
+    }
+  }
 
 
   // is there an easier way to check for periodicity?
@@ -489,8 +586,12 @@ void EnzoBlock::r_method_multipole_traverse_complete(CkReductionMsg * msg)
 void EnzoMethodMultipole::begin_down_cycle_(EnzoBlock * enzo_block) throw() 
 {
 
-  Field field = enzo_block->data()->field();
-  enzo_float * accel = (enzo_float *) field.values("acceleration_x"); 
+  // Field field = enzo_block->data()->field();
+  // enzo_float * accel = (enzo_float *) field.values("acceleration_x"); 
+  // Particle particle = enzo_block->data()->particle();
+  // const int num_prtl_types = particle.num_types();
+
+
   // int mx, my, mz;
   // int gx, gy, gz;
   // double hx, hy, hz;
@@ -499,8 +600,9 @@ void EnzoMethodMultipole::begin_down_cycle_(EnzoBlock * enzo_block) throw()
   
   if (enzo_block->is_leaf()) {
 
-    // CkPrintf("accel_x at 0,0,0, pre-refresh: %f", accel[0]); 
     evaluate_force_(enzo_block);
+    // CkPrintf("accel_x at 10, 10, 10, pre-refresh: %.9f\n", accel[10 + 32 * (10 + 10 * 32)]);
+
     refresh_acceleration_(enzo_block);
   }
 
@@ -519,10 +621,42 @@ void EnzoMethodMultipole::refresh_acceleration_ (EnzoBlock * enzo_block) throw()
 
 void EnzoBlock::p_method_multipole_end()
 {
-  Field field = this->data()->field();
-  enzo_float * accel = (enzo_float *) field.values("acceleration_x"); 
-  // enzo_float * vel = (enzo_float *) field.values("velocity_x"); 
-  // CkPrintf("accel_x at 0,0,0, post-refresh: %f\n", accel[0]); 
+
+  // Particle particle = this->data()->particle();
+  // const int num_prtl_types = particle.num_types();
+
+  // for (int it = 0; it < num_prtl_types; it++) {
+    
+  //   for (int ib = 0; ib < particle.num_batches(it); ib++) {
+
+  //     const int np = particle.num_particles(it,ib);
+
+  //     const int ia_ax  = particle.attribute_index(it,"ax");
+  //     const int ia_ay  = particle.attribute_index(it,"ay");
+  //     const int ia_az  = particle.attribute_index(it,"az");
+
+  //     enzo_float * axa =  (enzo_float *)particle.attribute_array (it,ia_ax,ib);
+  //     enzo_float * aya =  (enzo_float *)particle.attribute_array (it,ia_ay,ib);
+  //     enzo_float * aza =  (enzo_float *)particle.attribute_array (it,ia_az,ib);
+
+  //     const int dax =  particle.stride(it,ia_ax);
+  //     const int day =  particle.stride(it,ia_ay);
+  //     const int daz =  particle.stride(it,ia_az);
+
+  //     for (int ip=0; ip < np; ip++) {
+  //       CkPrintf("particle accel: %.9f, %.9f, %.9f\n", axa[ip*dax], aya[ip*day], aza[ip*daz]);
+  //     }
+  //   }
+  // }
+  // Field field = this->data()->field();
+  // enzo_float * accelx = (enzo_float *) field.values("acceleration_x"); 
+  // enzo_float * accely = (enzo_float *) field.values("acceleration_y");
+  // // enzo_float * vel = (enzo_float *) field.values("velocity_x"); 
+  // CkPrintf("accel_x at 1, 1, 1, post-refresh: %.12f\n", accelx[1]); 
+  // CkPrintf("accel_y at 1, 1, 1, post-refresh: %.12f\n", accely[1]);
+  // CkPrintf("accel_x at 4, 4, 4, post-refresh: %.12f\n", accelx[2]); 
+  // CkPrintf("accel_y at 4, 4, 4, post-refresh: %.12f\n", accely[2]);
+
   // CkPrintf("vel_x, post-refresh: %f\n", vel[0]);
 
   compute_done();
@@ -884,9 +1018,9 @@ void EnzoMethodMultipole::compute_multipoles_ (Block * block) throw()
         
         double dens = density[ix + mx * (iy + iz * my)];
 
-        if (iz == gz) {
-          CkPrintf("(%d, %d): dens = %f\n", ix-gx, iy-gy, dens);
-        }
+        // if (iz == gz) {
+        //   CkPrintf("(%d, %d): dens = %f\n", ix-gx, iy-gy, dens);
+        // }
 
         // if (std::isnan(dens)) {
         //   CkPrintf("bad density: %d, %d, %d\n", ix, iy, iz);
@@ -1133,7 +1267,7 @@ void EnzoMethodMultipole::evaluate_force_(Block * block) throw()
     double dt = block->dt();
     double time = block->time();
     cosmology-> compute_expansion_factor (&cosmo_a,&cosmo_dadt,time+0.5*dt);
-    grav_const = 1./(4 * cello::pi * cosmo_a);
+    grav_const = 1./(4 * cello::pi * cosmo_a * cosmo_a);
   }
   else {
     grav_const = enzo::grav_constant_codeU();
@@ -1220,13 +1354,13 @@ void EnzoMethodMultipole::evaluate_force_(Block * block) throw()
                   tot_cell_force[1] += grav_const * b_mass * d1_ewald[1];
                   tot_cell_force[2] += grav_const * b_mass * d1_ewald[2];
 
-                  if ((iz == gz) && (iz2==gz) && (ix-gx==7) && (iy-gy==7)) {
-                  CkPrintf("(%d, %d, %f) periodic force: (%f, %f); accel: (%f, %f)\n",
-                     ix2-gx, iy2-gy, dens[i2],
-                     grav_const * b_mass * d1_ewald[0], 
-                     grav_const * b_mass * d1_ewald[1], 
-                     accel_x[i], accel_y[i]);
-                  }
+                  // if ((iz == gz) && (iz2==gz) && (ix-gx==3) && (iy-gy==20)) {
+                  //    CkPrintf("(%d, %d, %f) periodic force: (%f, %f); accel: (%.9f, %.9f)\n",
+                  //    ix2-gx, iy2-gy, dens[i2],
+                  //    grav_const * b_mass * d1_ewald[0], 
+                  //    grav_const * b_mass * d1_ewald[1], 
+                  //    accel_x[i], accel_y[i]);
+                  // }
                 }
                 else {
                   disp[0] = (ix2 - ix) * hx;
@@ -1247,13 +1381,13 @@ void EnzoMethodMultipole::evaluate_force_(Block * block) throw()
                 tot_cell_force[1] += grav_const * cell_force[1];
                 tot_cell_force[2] += grav_const * cell_force[2];
 
-                if ((iz == gz) && (iz2==gz) && (ix-gx==7) && (iy-gy==7)) {
-                  CkPrintf("(%d, %d, %f) nonperiodic force: (%f, %f); accel: (%f, %f)\n",
-                     ix2-gx, iy2-gy, dens[i2], 
-                     grav_const * cell_force[0], 
-                     grav_const * cell_force[1], 
-                     accel_x[i], accel_y[i]);
-                  }
+                // if ((iz == gz) && (iz2==gz) && (ix-gx==3) && (iy-gy==20)) {
+                //      CkPrintf("(%d, %d, %f) nonperiodic force: (%f, %f); accel: (%.9f, %.9f)\n",
+                //      ix2-gx, iy2-gy, dens[i2], 
+                //      grav_const * cell_force[0], 
+                //      grav_const * cell_force[1], 
+                //      accel_x[i], accel_y[i]);
+                //   }
 
               }
             }
@@ -1302,9 +1436,35 @@ void EnzoMethodMultipole::evaluate_force_(Block * block) throw()
               
               // disp points from current cell to particle
               std::array<double, 3> disp;
-              disp[0] = xa2[ip*dx2] - (lo[0] + (ix-gx + 0.5)*hx); 
-              disp[1] = ya2[ip*dy2] - (lo[1] + (iy-gy + 0.5)*hy);
-              disp[2] = za2[ip*dz2] - (lo[2] + (iz-gz + 0.5)*hz);
+              
+              if (ewald_ != nullptr) {
+                
+                double a_loc[3]{lo[0] + (ix-gx + 0.5)*hx, lo[1] + (iy-gy + 0.5)*hy, lo[2] + (iz-gz + 0.5)*hz};
+                double b_loc[3]{xa2[ip*dx2], ya2[ip*dy2], za2[ip*dz2]};
+                double b_image[3];
+                cello::hierarchy()->get_nearest_periodic_image(b_loc, a_loc, b_image);
+
+                const int rank = cello::rank();
+                disp[0] = b_image[0] - a_loc[0];
+                disp[1] = (rank < 2) ? 0 : b_image[1] - a_loc[1];
+                disp[2] = (rank < 3) ? 0 : b_image[2] - a_loc[2];
+                  
+                // acceleration contribution from periodic images of Particle b
+                std::array<double, 3> d1_ewald = ewald_->interp_d1(disp[0], disp[1], disp[2]); 
+                  
+                accel_x[i] += grav_const * prtmass2[ip*dm2] * d1_ewald[0];
+                accel_y[i] += grav_const * prtmass2[ip*dm2] * d1_ewald[1];
+                accel_z[i] += grav_const * prtmass2[ip*dm2] * d1_ewald[2];
+
+                // tot_prt_force[0] += grav_const * prtmass2[ip*dm2] * d1_ewald[0];
+                // tot_prt_force[1] += grav_const * prtmass2[ip*dm2] * d1_ewald[1];
+                // tot_prt_force[2] += grav_const * prtmass2[ip*dm2] * d1_ewald[2];
+              }
+              else {
+                disp[0] = xa2[ip*dx2] - (lo[0] + (ix-gx + 0.5)*hx); 
+                disp[1] = ya2[ip*dy2] - (lo[1] + (iy-gy + 0.5)*hy);
+                disp[2] = za2[ip*dz2] - (lo[2] + (iz-gz + 0.5)*hz);
+              }
                 
               std::array<double, 3> prtcell_force = newton_force_(prtmass2[ip*dm2], disp); 
 
@@ -1312,9 +1472,9 @@ void EnzoMethodMultipole::evaluate_force_(Block * block) throw()
               accel_y[i] += grav_const * prtcell_force[1];
               accel_z[i] += grav_const * prtcell_force[2];
 
-              tot_prt_force[0] += grav_const * prtcell_force[0];
-              tot_prt_force[1] += grav_const * prtcell_force[1];
-              tot_prt_force[2] += grav_const * prtcell_force[2];
+              // tot_prt_force[0] += grav_const * prtcell_force[0];
+              // tot_prt_force[1] += grav_const * prtcell_force[1];
+              // tot_prt_force[2] += grav_const * prtcell_force[2];
 
               // ALSO UPDATE GRAVITATING PARTICLE ACCELS HERE?
             }
@@ -1329,7 +1489,7 @@ void EnzoMethodMultipole::evaluate_force_(Block * block) throw()
 
 
   // loop over all particles
-  // change this to loop over all particles, not just the ones that are gravitating
+  // change this to loop over all particles, not just the ones that are gravitating (done?)
 
   for (int it = 0; it < num_prtl_types; it++) {
     
@@ -1391,19 +1551,54 @@ void EnzoMethodMultipole::evaluate_force_(Block * block) throw()
 
               // disp points from current particle to interacting cell
               std::array<double, 3> disp;
-              disp[0] = (lo[0] + (ix2-gx + 0.5)*hx) - xa[ip*dx]; 
-              disp[1] = (lo[1] + (iy2-gy + 0.5)*hy) - ya[ip*dy];
-              disp[2] = (lo[2] + (iz2-gz + 0.5)*hz) - za[ip*dz];
+
+              double b_mass = dens[i2]*cell_vol;
+
+              // force from periodic images of Cell b
+              if (ewald_ != nullptr) {
+
+                double a_loc[3]{xa[ip*dx], ya[ip*dy], za[ip*dz]};
+                double b_loc[3]{lo[0] + (ix2-gx + 0.5)*hx, lo[1] + (iy2-gy + 0.5)*hy, lo[2] + (iz2-gz + 0.5)*hz};
+                double b_image[3];
+                cello::hierarchy()->get_nearest_periodic_image(b_loc, a_loc, b_image);
+
+                const int rank = cello::rank();
+                disp[0] = b_image[0] - a_loc[0];
+                disp[1] = (rank < 2) ? 0 : b_image[1] - a_loc[1];
+                disp[2] = (rank < 3) ? 0 : b_image[2] - a_loc[2];
+                  
+                // acceleration contribution from periodic images of Cell b
+                std::array<double, 3> d1_ewald = ewald_->interp_d1(disp[0], disp[1], disp[2]); 
+                  
+                axa[ip*dax] += grav_const * b_mass * d1_ewald[0];
+                aya[ip*day] += grav_const * b_mass * d1_ewald[1];
+                aza[ip*daz] += grav_const * b_mass * d1_ewald[2];
+
+                // CkPrintf("cell->particle force (periodic): %f, %f, %f\n",
+                //     grav_const * b_mass * d1_ewald[0], grav_const * b_mass * d1_ewald[1], grav_const * b_mass * d1_ewald[2]);
+
+                // tot_cell_force[0] += grav_const * b_mass * d1_ewald[0];
+                // tot_cell_force[1] += grav_const * b_mass * d1_ewald[1];
+                // tot_cell_force[2] += grav_const * b_mass * d1_ewald[2];
+              }
+              else {
+                disp[0] = (lo[0] + (ix2-gx + 0.5)*hx) - xa[ip*dx]; 
+                disp[1] = (lo[1] + (iy2-gy + 0.5)*hy) - ya[ip*dy];
+                disp[2] = (lo[2] + (iz2-gz + 0.5)*hz) - za[ip*dz];
+              }
                 
-              std::array<double, 3> cellprt_force = newton_force_(dens[i2]*cell_vol, disp); 
+              std::array<double, 3> cellprt_force = newton_force_(b_mass, disp); 
 
               axa[ip*dax] += grav_const * cellprt_force[0];
               aya[ip*day] += grav_const * cellprt_force[1];
               aza[ip*daz] += grav_const * cellprt_force[2];
 
-              tot_cell_force[0] += grav_const * cellprt_force[0];
-              tot_cell_force[1] += grav_const * cellprt_force[1];
-              tot_cell_force[2] += grav_const * cellprt_force[2];
+              // CkPrintf("cell->particle force (nonperiodic): %f, %f, %f\n", 
+              //     grav_const * cellprt_force[0], grav_const * cellprt_force[1], grav_const * cellprt_force[2]);
+
+              // tot_cell_force[0] += grav_const * cellprt_force[0];
+              // tot_cell_force[1] += grav_const * cellprt_force[1];
+              // tot_cell_force[2] += grav_const * cellprt_force[2];
 
             }
           }
@@ -1452,15 +1647,48 @@ void EnzoMethodMultipole::evaluate_force_(Block * block) throw()
               
                 // disp points from current particle to interacting particle
                 std::array<double, 3> disp;
-                disp[0] = xa2[ip2*dx2] - xa[ip*dx]; 
-                disp[1] = ya2[ip2*dy2] - ya[ip*dy];
-                disp[2] = za2[ip2*dz2] - za[ip*dz];
+
+                // force from periodic images of Particle b
+                if (ewald_ != nullptr) {
+
+                  double a_loc[3]{xa[ip*dx], ya[ip*dy], za[ip*dz]};
+                  double b_loc[3]{xa2[ip2*dx2], ya2[ip2*dy2], za2[ip2*dz2]};
+                  double b_image[3];
+                  cello::hierarchy()->get_nearest_periodic_image(b_loc, a_loc, b_image);
+
+                  const int rank = cello::rank();
+                  disp[0] = b_image[0] - a_loc[0];
+                  disp[1] = (rank < 2) ? 0 : b_image[1] - a_loc[1];
+                  disp[2] = (rank < 3) ? 0 : b_image[2] - a_loc[2];
+                    
+                  // acceleration contribution from periodic images of Particle b
+                  std::array<double, 3> d1_ewald = ewald_->interp_d1(disp[0], disp[1], disp[2]); 
+                    
+                  axa[ip*dax] += grav_const * prtmass2[ip2*dm2] * d1_ewald[0];
+                  aya[ip*day] += grav_const * prtmass2[ip2*dm2] * d1_ewald[1];
+                  aza[ip*daz] += grav_const * prtmass2[ip2*dm2] * d1_ewald[2];
+
+                  // CkPrintf("particle->particle force (periodic): %f, %f, %f\n", 
+                  //     grav_const * prtmass2[ip2*dm2] * d1_ewald[0], grav_const * prtmass2[ip2*dm2] * d1_ewald[1], grav_const * prtmass2[ip2*dm2] * d1_ewald[2]);
+
+                  tot_prt_force[0] += grav_const * prtmass2[ip2*dm2] * d1_ewald[0];
+                  tot_prt_force[1] += grav_const * prtmass2[ip2*dm2] * d1_ewald[1];
+                  tot_prt_force[2] += grav_const * prtmass2[ip2*dm2] * d1_ewald[2];
+                }
+                else {
+                  disp[0] = xa2[ip2*dx2] - xa[ip*dx]; 
+                  disp[1] = ya2[ip2*dy2] - ya[ip*dy];
+                  disp[2] = za2[ip2*dz2] - za[ip*dz];
+                }
                   
                 std::array<double, 3> prtprt_force = newton_force_(prtmass2[ip2*dm2], disp); 
 
                 axa[ip*dax] += grav_const * prtprt_force[0];
                 aya[ip*day] += grav_const * prtprt_force[1];
                 aza[ip*daz] += grav_const * prtprt_force[2];
+
+                // CkPrintf("particle->particle force (nonperiodic): %f, %f, %f\n", 
+                //       grav_const * prtprt_force[0], grav_const * prtprt_force[1], grav_const * prtprt_force[2]);
 
                 tot_prt_force[0] += grav_const * prtprt_force[0];
                 tot_prt_force[1] += grav_const * prtprt_force[1];
@@ -1471,7 +1699,7 @@ void EnzoMethodMultipole::evaluate_force_(Block * block) throw()
           }
         }
 
-        //CkPrintf("Particle force (prt): %f, %f, %f\n", tot_prt_force[0], tot_prt_force[1], tot_prt_force[2]);
+        // CkPrintf("TOTAL PARTICLE FORCE: %.12f, %.12f, %.12f\n", tot_prt_force[0], tot_prt_force[1], tot_prt_force[2]);
         //CkPrintf("Accel (prt): %f, %f, %f\n\n", axa[ip*dax], aya[ip*day], aza[ip*daz]);
 
       }
@@ -1549,19 +1777,22 @@ void EnzoMethodMultipole::traverse
     }
   }
 
-  else if (is_leaf_a && is_leaf_b) {
-
-    // two leafs -- interact directly
-    traverse_direct_pair (enzo_block,index_a,volume_a,index_b,volume_b);
-
-  }
-
+  
   else if (mac) {
 
     // mac satisfied -- interact approximately
     traverse_approx_pair (enzo_block,index_a,volume_a,index_b,volume_b);
 
   } 
+
+
+  // should this go before or after the MAC check?
+  else if (is_leaf_a && is_leaf_b) {
+
+    // two leafs -- interact directly
+    traverse_direct_pair (enzo_block,index_a,volume_a,index_b,volume_b);
+
+  }
   
   
   else if (is_leaf_a) {
@@ -1937,7 +2168,7 @@ void EnzoMethodMultipole::interact_direct_(Block * block, char * fldbuffer_b, ch
     double dt = block->dt();
     double time = block->time();
     cosmology-> compute_expansion_factor (&cosmo_a,&cosmo_dadt,time+0.5*dt);
-    grav_const = 1./(4 * cello::pi * cosmo_a);
+    grav_const = 1./(4 * cello::pi * cosmo_a * cosmo_a);
   }
   else {
     grav_const = enzo::grav_constant_codeU();
@@ -1969,6 +2200,7 @@ void EnzoMethodMultipole::interact_direct_(Block * block, char * fldbuffer_b, ch
 
               double b_mass = dens[i2]*hx2*hy2*hz2;
                 
+              // force from periodic images of Cell b
               if (ewald_ != nullptr) {
 
                 double a_loc[3]{lo[0] + (ix-gx + 0.5)*hx, lo[1] + (iy-gy + 0.5)*hy, lo[2] + (iz-gz + 0.5)*hz};
@@ -1986,7 +2218,7 @@ void EnzoMethodMultipole::interact_direct_(Block * block, char * fldbuffer_b, ch
                 disp[1] = (rank < 2) ? 0 : b_image[1] - a_loc[1];
                 disp[2] = (rank < 3) ? 0 : b_image[2] - a_loc[2];
                   
-                // acceleration contribution from periodic images of particle b
+                // acceleration contribution from periodic images of Cell b
                 std::array<double, 3> d1_ewald = ewald_->interp_d1(disp[0], disp[1], disp[2]); 
                   
                 // should i be subtracting or adding?
@@ -2062,9 +2294,32 @@ void EnzoMethodMultipole::interact_direct_(Block * block, char * fldbuffer_b, ch
               
               // disp points from cell in current Block to particle in Block b
               std::array<double, 3> disp;
-              disp[0] = xa2[ip*dx2] - (lo[0] + (ix-gx + 0.5)*hx); 
-              disp[1] = ya2[ip*dy2] - (lo[1] + (iy-gy + 0.5)*hy);
-              disp[2] = za2[ip*dz2] - (lo[2] + (iz-gz + 0.5)*hz);
+              
+              // force from periodic images of Particle b
+              if (ewald_ != nullptr) {
+                
+                double a_loc[3]{lo[0] + (ix-gx + 0.5)*hx, lo[1] + (iy-gy + 0.5)*hy, lo[2] + (iz-gz + 0.5)*hz};
+                double b_loc[3]{xa2[ip*dx2], ya2[ip*dy2], za2[ip*dz2]};
+                double b_image[3];
+                cello::hierarchy()->get_nearest_periodic_image(b_loc, a_loc, b_image);
+
+                const int rank = cello::rank();
+                disp[0] = b_image[0] - a_loc[0];
+                disp[1] = (rank < 2) ? 0 : b_image[1] - a_loc[1];
+                disp[2] = (rank < 3) ? 0 : b_image[2] - a_loc[2];
+                  
+                // acceleration contribution from periodic images of Particle b
+                std::array<double, 3> d1_ewald = ewald_->interp_d1(disp[0], disp[1], disp[2]); 
+                  
+                accel_x[i] += grav_const * prtmass2[ip*dm2] * d1_ewald[0];
+                accel_y[i] += grav_const * prtmass2[ip*dm2] * d1_ewald[1];
+                accel_z[i] += grav_const * prtmass2[ip*dm2] * d1_ewald[2];
+              }
+              else {
+                disp[0] = xa2[ip*dx2] - (lo[0] + (ix-gx + 0.5)*hx); 
+                disp[1] = ya2[ip*dy2] - (lo[1] + (iy-gy + 0.5)*hy);
+                disp[2] = za2[ip*dz2] - (lo[2] + (iz-gz + 0.5)*hz);
+              }
                 
               std::array<double, 3> prtcell_force = newton_force_(prtmass2[ip*dm2], disp); 
 
@@ -2119,11 +2374,36 @@ void EnzoMethodMultipole::interact_direct_(Block * block, char * fldbuffer_b, ch
 
               // disp points from particle in current Block to cell in Block b
               std::array<double, 3> disp;
-              disp[0] = (lo2[0] + (ix2-gx + 0.5)*hx2) - xa[ip*dx]; 
-              disp[1] = (lo2[1] + (iy2-gy + 0.5)*hy2) - ya[ip*dy];
-              disp[2] = (lo2[2] + (iz2-gz + 0.5)*hz2) - za[ip*dz];
-                
-              std::array<double, 3> cellprt_force = newton_force_(dens[i2]*hx2*hy2*hz2, disp); 
+
+              double b_mass = dens[i2]*hx2*hy2*hz2;
+
+              // force from periodic images of Cell b
+              if (ewald_ != nullptr) {
+
+                double a_loc[3]{xa[ip*dx], ya[ip*dy], za[ip*dz]};
+                double b_loc[3]{lo2[0] + (ix2-gx + 0.5)*hx2, lo2[1] + (iy2-gy + 0.5)*hy2, lo2[2] + (iz2-gz + 0.5)*hz2};
+                double b_image[3];
+                cello::hierarchy()->get_nearest_periodic_image(b_loc, a_loc, b_image);
+
+                const int rank = cello::rank();
+                disp[0] = b_image[0] - a_loc[0];
+                disp[1] = (rank < 2) ? 0 : b_image[1] - a_loc[1];
+                disp[2] = (rank < 3) ? 0 : b_image[2] - a_loc[2];
+                  
+                // acceleration contribution from periodic images of Cell b
+                std::array<double, 3> d1_ewald = ewald_->interp_d1(disp[0], disp[1], disp[2]); 
+                  
+                axa[ip*dax] += grav_const * b_mass * d1_ewald[0];
+                aya[ip*day] += grav_const * b_mass * d1_ewald[1];
+                aza[ip*daz] += grav_const * b_mass * d1_ewald[2];
+              }
+              else {
+                disp[0] = (lo2[0] + (ix2-gx + 0.5)*hx2) - xa[ip*dx]; 
+                disp[1] = (lo2[1] + (iy2-gy + 0.5)*hy2) - ya[ip*dy];
+                disp[2] = (lo2[2] + (iz2-gz + 0.5)*hz2) - za[ip*dz];
+              }
+
+              std::array<double, 3> cellprt_force = newton_force_(b_mass, disp); 
 
               axa[ip*dax] += grav_const * cellprt_force[0];
               aya[ip*day] += grav_const * cellprt_force[1];
@@ -2170,10 +2450,33 @@ void EnzoMethodMultipole::interact_direct_(Block * block, char * fldbuffer_b, ch
               
               // disp points from particle in current Block to particle in Block b
               std::array<double, 3> disp;
-              disp[0] = xa2[ip2*dx2] - xa[ip*dx]; 
-              disp[1] = ya2[ip2*dy2] - ya[ip*dy];
-              disp[2] = za2[ip2*dz2] - za[ip*dz];
-                
+
+              // force from periodic images of Particle b
+              if (ewald_ != nullptr) {
+
+                double a_loc[3]{xa[ip*dx], ya[ip*dy], za[ip*dz]};
+                double b_loc[3]{xa2[ip2*dx2], ya2[ip2*dy2], za2[ip2*dz2]};
+                double b_image[3];
+                cello::hierarchy()->get_nearest_periodic_image(b_loc, a_loc, b_image);
+
+                const int rank = cello::rank();
+                disp[0] = b_image[0] - a_loc[0];
+                disp[1] = (rank < 2) ? 0 : b_image[1] - a_loc[1];
+                disp[2] = (rank < 3) ? 0 : b_image[2] - a_loc[2];
+                  
+                // acceleration contribution from periodic images of Particle b
+                std::array<double, 3> d1_ewald = ewald_->interp_d1(disp[0], disp[1], disp[2]); 
+                  
+                axa[ip*dax] += grav_const * prtmass2[ip2*dm2] * d1_ewald[0];
+                aya[ip*day] += grav_const * prtmass2[ip2*dm2] * d1_ewald[1];
+                aza[ip*daz] += grav_const * prtmass2[ip2*dm2] * d1_ewald[2];
+              }
+              else {
+                disp[0] = xa2[ip2*dx2] - xa[ip*dx]; 
+                disp[1] = ya2[ip2*dy2] - ya[ip*dy];
+                disp[2] = za2[ip2*dz2] - za[ip*dz];
+              }
+
               std::array<double, 3> prtprt_force = newton_force_(prtmass2[ip2*dm2], disp); 
 
               axa[ip*dax] += grav_const * prtprt_force[0];
@@ -2371,6 +2674,10 @@ bool EnzoMethodMultipole::is_far_ (EnzoBlock * enzo_block,
   *ra = 0.5*sqrt(*ra);  // half the length of the diagonal of Block a
   *rb = 0.5*sqrt(*rb);  // half the length of the diagonal of Block b 
 
+  if (d * theta_ > (*ra + *rb)) {
+    CkPrintf("angle: %f\n", (*ra + *rb)/d);
+  }
+
   return  (d * theta_ > (*ra + *rb));
 }
 
@@ -2398,11 +2705,11 @@ bool EnzoMethodMultipole::is_far_ (EnzoBlock * enzo_block,
   // accelerations.
   //
 
-  int ntypes = 2;
+  int ntypes = 1;
   int * particleIcTypes = new int[ntypes];
 
   particleIcTypes[0] = particle_descr->type_index("star");
-  particleIcTypes[1] = particle_descr->type_index("trace");
+  // particleIcTypes[1] = particle_descr->type_index("trace");
 
   // particleIcFileNames.push_back("halo.dat");
   // nparticles_ = std::max(nparticles_, nlines("halo.dat"));
@@ -2435,12 +2742,12 @@ bool EnzoMethodMultipole::is_far_ (EnzoBlock * enzo_block,
     enzo_float * paz  = 0;
 
     // change to ntypes-1 if you want to test tracer particles
-    if (ipt != ntypes - 1) {
+    if (ipt != ntypes) {
 
       int ia_m = particle.attribute_index (it, "mass");
       enzo_float * prtmass = 0;
 
-      for (int i = 0; i < nprtls-1; i++){
+      for (int i = 0; i < nprtls; i++){
 
         // CkPrintf("pos: %f, %f, %f\n", prtls[i][1], prtls[i][2], prtls[i][3]);
 

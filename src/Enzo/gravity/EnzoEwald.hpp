@@ -53,9 +53,9 @@ public:
     double dy = Ly / (interp_ypoints_ - 1);
     double dz = Lz / (interp_zpoints_ - 1);
 
-    int ix = (int)((x+Lx/2.)/dx);
-    int iy = (int)((y+Ly/2.)/dy);
-    int iz = (int)((z+Lz/2.)/dz);
+    int ix = round((x+Lx/2.)/dx);
+    int iy = round((y+Ly/2.)/dy);
+    int iz = round((z+Lz/2.)/dz);
 
     *i = ix + interp_xpoints_ * (iy + iz * interp_ypoints_);
 

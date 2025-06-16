@@ -127,7 +127,7 @@
 	 image_lower = [0.0, 0.0, 0.5];
 	 image_upper = [1.0, 1.0, 0.5];
          schedule {
-             step = 50;
+             step = 5;
              var = "cycle";
          };
          type = "image";
@@ -135,151 +135,15 @@
 
      hdf5 {
          particle_list = ["dark"];
-	 field_list = ["density"];
+	 field_list = ["density", "acceleration_x", "acceleration_y", "acceleration_z"];
 	 # name = [ "data-222-%02d.h5", "count" ]; 
          schedule {
-             step = 50;
+             step = 5;
              var = "cycle";
          };
          type = "data";
      };
      
-     '''
-     de {
-         field_list = [ "density" ];
-         image_size = [ 256, 256 ];
-         image_specify_bounds = true;
-         image_type = "data";
-         # name = [ "de-222-%02d.png", "count" ];
-	 image_lower = [0.0, 0.0, 0.5];
-	 image_upper = [1.0, 1.0, 0.5];
-         schedule {
-             step = 10;
-             var = "cycle";
-         };
-         type = "image";
-     };
-     dt {
-         field_list = [ "density_total" ];
-         image_size = [ 256, 256 ];
-         image_specify_bounds = true;
-         image_type = "data";
-         # name = [ "dt-222-%02d.png", "count" ];
-	 image_lower = [0.0, 0.0, 0.5];
-	 image_upper = [1.0, 1.0, 0.5];
-         schedule {
-             step = 10;
-             var = "cycle";
-         };
-         type = "image";
-     };
-     po {
-         field_list = [ "potential" ];
-         image_size = [ 256, 256 ];
-         image_specify_bounds = true;
-         image_type = "data";
-         # name = [ "po-222-%02d.png", "count" ];
-	 image_lower = [0.0, 0.0, 0.5];
-	 image_upper = [1.0, 1.0, 0.5];
-         schedule {
-             step = 10;
-             var = "cycle";
-         };
-         type = "image";
-     };
-     hdf5 {
-         particle_list = ["dark"];
-     	 field_list = [ "density",
-     	 "velocity_x", "velocity_y", "velocity_z",
-     	 "acceleration_x", "acceleration_y", "acceleration_z",
-     	 "total_energy", "internal_energy", "pressure",
-     	 "density_total", "X", "B", "potential"];
-         # name = [ "data-222-%02d.h5", "count" ];
-         schedule {
-             step = 50;
-             var = "cycle";
-         };
-         type = "data";
-     };
-     vx {
-         field_list = [ "velocity_x" ];
-         image_size = [ 256, 256 ];
-         image_type = "data";
-         # name = [ "vx-222-%02d.png", "count" ];
-	 image_lower = [0.0, 0.0, 0.5];
-	 image_upper = [1.0, 1.0, 0.5];
-         schedule {
-             step = 10;
-             var = "cycle";
-         };
-         type = "image";
-     };
-     vy {
-         field_list = [ "velocity_y" ];
-         image_size = [ 256, 256 ];
-         image_type = "data";
-         # name = [ "vy-222-%02d.png", "count" ];
-	 image_lower = [0.0, 0.0, 0.5];
-	 image_upper = [1.0, 1.0, 0.5];
-         schedule {
-             step = 10;
-             var = "cycle";
-         };
-         type = "image";
-     };
-     vz {
-         field_list = [ "velocity_z" ];
-         image_size = [ 256, 256 ];
-         image_type = "data";
-         # name = [ "vz-222-%02d.png", "count" ];
-	 image_lower = [0.0, 0.0, 0.5];
-	 image_upper = [1.0, 1.0, 0.5];
-         schedule {
-             step = 10;
-             var = "cycle";
-         };
-         type = "image";
-     };
-     ax {
-         field_list = [ "acceleration_x" ];
-         image_size = [ 256, 256 ];
-         image_type = "data";
-         # name = [ "ax-222-%02d.png", "count" ];
-	 image_lower = [0.0, 0.0, 0.5];
-	 image_upper = [1.0, 1.0, 0.5];
-         schedule {
-             step = 10;
-             var = "cycle";
-         };
-         type = "image";
-     };
-     ay {
-         field_list = [ "acceleration_y" ];
-         image_size = [ 256, 256 ];
-         image_type = "data";
-         # name = [ "ay-222-%02d.png", "count" ];
-	 image_lower = [0.0, 0.0, 0.5];
-	 image_upper = [1.0, 1.0, 0.5];
-         schedule {
-             step = 10;
-             var = "cycle";
-         };
-         type = "image";
-     };
-     az {
-         field_list = [ "acceleration_z" ];
-         image_size = [ 256, 256 ];
-         image_type = "data";
-         # name = [ "az-222-%02d.png", "count" ];
-	 image_lower = [0.0, 0.0, 0.5];
-	 image_upper = [1.0, 1.0, 0.5];
-         schedule {
-             step = 10;
-             var = "cycle";
-         };
-         type = "image";
-     };
-     '''
  }
 
  Particle {
@@ -298,7 +162,7 @@
                         "is_local", "default"];
          position = [ "x", "y", "z" ];
 	 velocity = [ "vx", "vy", "vz" ];
-         constants = [ "mass", "default", 2.5581226e-5 ];
+         constants = [ "mass", "default", 4.7683716e-7 ];
          group_list = [ "is_gravitating" ];
      }
  }

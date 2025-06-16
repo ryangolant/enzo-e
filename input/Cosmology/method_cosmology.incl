@@ -339,12 +339,12 @@
  }
 
  Stopping {
-     cycle = 20;
-     redshift = 43.0;
+     cycle = 100000; # 20;
+     redshift = 0.0; # 43.0;
  }
 
- Testing {
-     cycle_final = 10; # redshift = 43.0;
-     time_final  = 1.01998152194867;  # 10 cycles
- }
+ # Testing {
+ #     cycle_final = 10; # redshift = 43.0;
+ #     time_final  = 1.01998152194867;  # 10 cycles
+ # }
  

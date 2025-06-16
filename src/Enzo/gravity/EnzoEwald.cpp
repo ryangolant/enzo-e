@@ -896,9 +896,9 @@ std::array<double, 3> EnzoEwald::interp_d1(double x, double y, double z) throw()
 
 
   std::array<double, 3> sum; 
-  sum[0] = d1_array_(i, 0) + first_term[0] + 0.5*second_term[0] + 1.0/6.0*third_term[0] + 1.0/24*fourth_term[0];
-  sum[1] = d1_array_(i, 1) + first_term[1] + 0.5*second_term[1] + 1.0/6.0*third_term[1] + 1.0/24*fourth_term[1];
-  sum[2] = d1_array_(i, 2) + first_term[2] + 0.5*second_term[2] + 1.0/6.0*third_term[2] + 1.0/24*fourth_term[2];
+  sum[0] = d1_array_(i, 0) + first_term[0] + 0.5*second_term[0] + 1.0/6.0*third_term[0]; //+ 1.0/24*fourth_term[0];
+  sum[1] = d1_array_(i, 1) + first_term[1] + 0.5*second_term[1] + 1.0/6.0*third_term[1]; //+ 1.0/24*fourth_term[1];
+  sum[2] = d1_array_(i, 2) + first_term[2] + 0.5*second_term[2] + 1.0/6.0*third_term[2]; //+ 1.0/24*fourth_term[2];
 
   return sum;
   
@@ -1530,7 +1530,7 @@ CelloView<double, 1> EnzoEwald::d2_gadget(double x, double y, double z) throw()
               double val   = 4.0 * M_PI * (LONG_X * LONG_Y * LONG_Z) / k2 * exp(-k2 / (4.0 * alpha2)) * cos(kdotx);
 
               
-	      d2_counter(0) += val * kx*kx;
+	            d2_counter(0) += val * kx*kx;
               d2_counter(1) += val * kx*ky;
               d2_counter(2) += val * kx*kz;
               d2_counter(3) += val * ky*ky;
@@ -1594,11 +1594,17 @@ CelloView<double, 1> EnzoEwald::d3(double x, double y, double z) throw()
 
         if (nx != 0 || ny != 0 || nz != 0) {
           if (r != 0) {
-            g2 = (4.0 * sqrt(M_PI) * alpha3 * r3 + 6.0 * sqrt(M_PI) * alpha * r + 3.0 * M_PI * exp(alpha2 * r2) * erfc(alpha*r))
-              * exp(-1.0 * alpha2 * r2) / (M_PI * r5);
+            // g2 = (4.0 * sqrt(M_PI) * alpha3 * r3 + 6.0 * sqrt(M_PI) * alpha * r + 3.0 * M_PI * exp(alpha2 * r2) * erfc(alpha*r))
+            //   * exp(-1.0 * alpha2 * r2) / (M_PI * r5);
 
-            g3 = (-8.0 * sqrt(M_PI) * alpha5 * r5 - 20.0 * sqrt(M_PI) * alpha3 * r3 - 30.0 * sqrt(M_PI) * alpha * r
-              - 15.0 * M_PI * exp(alpha2 * r2) * erfc(alpha*r)) * exp(-1.0 * alpha2 * r2) / (M_PI * r7);
+            // g3 = (-8.0 * sqrt(M_PI) * alpha5 * r5 - 20.0 * sqrt(M_PI) * alpha3 * r3 - 30.0 * sqrt(M_PI) * alpha * r
+            //   - 15.0 * M_PI * exp(alpha2 * r2) * erfc(alpha*r)) * exp(-1.0 * alpha2 * r2) / (M_PI * r7);
+
+            g2 = (3.0 * erfc(alpha * r) + (6.0 * alpha * r + 4.0 * alpha3 * r3) / sqrt(M_PI) * exp(-alpha2 * r2)) / r5;
+
+            g3 = -(15.0 * erfc(alpha * r) +
+                  (30.0 * alpha * r + 20.0 * alpha3 * r3 + 8.0 * alpha5 * r5) / sqrt(M_PI) * exp(-alpha2 * r2)) / r7;
+
           }
         }
         else {
@@ -1619,11 +1625,17 @@ CelloView<double, 1> EnzoEwald::d3(double x, double y, double z) throw()
 
           }
           else { // incorporate Newtonian 1/r term
-            g2 = -3.0/r5 + (4.0 * sqrt(M_PI) * alpha3 * r3 + 6.0 * sqrt(M_PI) * alpha * r + 3.0 * M_PI * exp(alpha2 * r2) * erfc(alpha*r))
-                * exp(-1.0 * alpha2 * r2) / (M_PI * r5);
+            // g2 = -3.0/r5 + (4.0 * sqrt(M_PI) * alpha3 * r3 + 6.0 * sqrt(M_PI) * alpha * r + 3.0 * M_PI * exp(alpha2 * r2) * erfc(alpha*r))
+            //     * exp(-1.0 * alpha2 * r2) / (M_PI * r5);
 
-            g3 = 15.0/r7 + (-8.0 * sqrt(M_PI) * alpha5 * r5 - 20.0 * sqrt(M_PI) * alpha3 * r3 - 30.0 * sqrt(M_PI) * alpha * r
-                - 15.0 * M_PI * exp(alpha2 * r2) * erfc(alpha*r)) * exp(-1.0 * alpha2 * r2) / (M_PI * r7);
+            // g3 = 15.0/r7 + (-8.0 * sqrt(M_PI) * alpha5 * r5 - 20.0 * sqrt(M_PI) * alpha3 * r3 - 30.0 * sqrt(M_PI) * alpha * r
+            //     - 15.0 * M_PI * exp(alpha2 * r2) * erfc(alpha*r)) * exp(-1.0 * alpha2 * r2) / (M_PI * r7);
+
+            g2 = -(3.0 * erf(alpha * r) - (6.0 * alpha * r + 4.0 * alpha3 * r3) / sqrt(M_PI) * exp(-alpha2 * r2)) / r5;
+
+            g3 = -(-15.0 * erf(alpha * r) +
+                  (30.0 * alpha * r + 20.0 * alpha3 * r3 + 8.0 * alpha5 * r5) / sqrt(M_PI) * exp(-alpha2 * r2)) / r7;
+
           }
         }
 

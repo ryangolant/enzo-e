@@ -19,8 +19,9 @@
     list = ["value"];
 
     value {
-        # density = [ 1.0 ];
-        density = [1.000001, x >= 0.5, 0.999999];
+        density = [ 0.1 ];
+        # density = [1.000001, x >= 0.5, 0.999999];
+	# density = [1.0 + 0.000001 * sin (4.0 * pi * x), x > 0.0, 0.0];
 	
 	acceleration_x = [ 0.0 ];
 	acceleration_y = [ 0.0 ];
@@ -56,8 +57,8 @@
  Mesh {
      root_rank = 3;
     #  root_size   = [ 64, 32, 1];  # total number of cells in root grid
-      root_size = [32, 32, 32];
-     root_blocks = [  1,  1, 1 ];  # number of blocks in root grid
+     root_size = [4, 4, 4];
+     root_blocks = [  2,  2, 2 ];  # number of blocks in root grid
                                 # (so block size = (64/4,32/2) = (16,16)
  }
 
@@ -86,36 +87,36 @@
      padding = 0;
  }
 
- '''
- Particle {
-    list = ["star", "trace"];
+ 
+ # Particle {
+ #    list = ["star"];
 
-    star {
-        attributes = [ "x", "double",
-                       "y", "double",
-                       "z", "double",
-                       "ax", "double",
-                       "ay", "double",
-                       "az", "double",
-                       "mass", "double"];
+ #    star {
+ #        attributes = [ "x", "double",
+ #                       "y", "double",
+ #                       "z", "double",
+ #                       "ax", "double",
+ #                       "ay", "double",
+ #                       "az", "double",
+ #                       "mass", "double"];
                        
-        position = [ "x", "y", "z" ];
+ #        position = [ "x", "y", "z" ];
         
-        group_list = ["is_gravitating"];
-    }
+ #        group_list = ["is_gravitating"];
+ #    }
 
-    trace {
-        attributes = [ "x", "double",
-                       "y", "double",
-                       "z", "double",
-                       "ax", "double",
-                       "ay", "double",
-                       "az", "double"];
+ #    # trace {
+ #    #     attributes = [ "x", "double",
+ #    #                    "y", "double",
+ #    #                    "z", "double",
+ #    #                    "ax", "double",
+ #    #                    "ay", "double",
+ #    #                    "az", "double"];
                        
-        position = [ "x", "y", "z" ];
-    }
-  }
-  '''
+ #    #     position = [ "x", "y", "z" ];
+ #    # }
+ #  }
+ 
 
 #======================================================================
 # COMPUTATION
@@ -129,12 +130,12 @@
 
      multipole {
          
-	 theta = 0.0001;
+	 theta = 0.00001;
 	 eps0 = 0.0;
 	 r0 = 0.0;
-	 interp_xpoints = 64;
-	 interp_ypoints = 64;
-	 interp_zpoints = 64;
+	 interp_xpoints = 256;
+	 interp_ypoints = 256;
+	 interp_zpoints = 256;
      }
  }
 
@@ -143,5 +144,50 @@
 #======================================================================
 
  Output {
-    list = [];    
+    # list = ["de", "data"];
+    list = ["de", "accel"];
+
+    de {
+         field_list = [ "density" ];
+         image_size = [ 256, 256 ];
+         image_specify_bounds = true;
+         image_type = "data";
+         name = [ "multipole-dens-%03d.png", "cycle" ];
+	 image_lower = [0.0, 0.0, 0.5];
+	 image_upper = [1.0, 1.0, 0.5];
+         schedule {
+             step = 100;
+             var = "cycle";
+         };
+         type = "image";
+     };
+
+     accel {
+         field_list = [ "acceleration_x" ];
+         image_size = [ 256, 256 ];
+         image_specify_bounds = true;
+         image_type = "data";
+         name = [ "multipole-accel-%03d.png", "cycle" ];
+	 image_lower = [0.0, 0.0, 0.5];
+	 image_upper = [1.0, 1.0, 0.5];
+         schedule {
+             step = 100;
+             var = "cycle";
+         };
+         type = "image";
+     };
+
+     #data {
+     #    type = "data";
+     #	 field_list = ["density", "acceleration_x", "acceleration_y", "acceleration_z"];
+     #    name = ["data-%03d.h5", "proc"];
+     #    dir = ["multipole_test_%.4f","time"];
+     #    schedule {
+     #        # var = "time";
+     #        # list = [0.0, 1.1547005383792517];
+
+     #	     var = "cycle";
+     #	     list = [0, 1];
+     #    }
+     # };
  }

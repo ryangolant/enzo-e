@@ -7,51 +7,13 @@
   
   Output {
      dark {
-         dir=["Dir_VOIDS_DM_UNI-FULL-%04d","count"];
+         dir=["Dir_VOIDS_DM_UNI-ACCEL-%04d","count"];
          name = [ "voids-dm-uni-dark-%02d.png", "count" ];
      }
 
      hdf5 {
-          dir=["Dir_VOIDS_DM_UNI-FULL-%04d","count"];
+          dir=["Dir_VOIDS_DM_UNI-ACCEL-%04d","count"];
           name = [ "voids-dm-uni-data-%02d.h5", "count" ];
      }
 
-     '''
-     de {
-         dir=["Dir_VOIDS_DM_UNI-%04d","count"];
-         name = [ "voids-dm-uni-de-%02d.png", "count" ];
-     }
-     dt {
-         dir=["Dir_VOIDS_DM_UNI-%04d","count"];
-         name = [ "voids-dm-uni-dt-%02d.png", "count" ];
-     }
-     po {
-         dir=["Dir_VOIDS_DM_UNI-%04d","count"];
-         name = [ "voids-dm-uni-po-%02d.png", "count" ];
-     }
-     vx {
-         dir=["Dir_VOIDS_DM_UNI-%04d","count"];
-         name = [ "voids-dm-uni-vx-%02d.png", "count" ];
-     }
-     vy {
-         dir=["Dir_VOIDS_DM_UNI-%04d","count"];
-         name = [ "voids-dm-uni-vy-%02d.png", "count" ];
-     }
-     vz {
-         dir=["Dir_VOIDS_DM_UNI-%04d","count"];
-         name = [ "voids-dm-uni-vz-%02d.png", "count" ];
-     }
-     ax {
-         dir=["Dir_VOIDS_DM_UNI-%04d","count"];
-         name = [ "voids-dm-uni-ax-%02d.png", "count" ];
-     }
-     ay {
-         dir=["Dir_VOIDS_DM_UNI-%04d","count"];
-         name = [ "voids-dm-uni-ay-%02d.png", "count" ];
-     }
-     az {
-         dir=["Dir_VOIDS_DM_UNI-%04d","count"];
-         name = [ "voids-dm-uni-az-%02d.png", "count" ];
-     }
-     '''
  }

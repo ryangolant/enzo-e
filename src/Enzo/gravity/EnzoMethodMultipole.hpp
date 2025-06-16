@@ -23,20 +23,8 @@ public: // interface -- which methods should be public and which protected?
   /// Create a new EnzoMethodMultipole object
   EnzoMethodMultipole(ParameterGroup p);
 
-  EnzoMethodMultipole()
-    : Method(),
-      theta_(0),
-      eps0_(0),
-      r0_(0),
-      is_volume_(-1),
-      block_volume_(),
-      max_volume_(0),
-      interp_xpoints_(64),
-      interp_ypoints_(2),
-      interp_zpoints_(2),
-      dt_max_(1.0e10),
-      ir_exit_(-1)
-  { }
+  EnzoMethodMultipole() = delete;
+
 
   /// Charm++ PUP::able declarations
   PUPable_decl(EnzoMethodMultipole);
@@ -50,13 +38,13 @@ public: // interface -- which methods should be public and which protected?
       i_msg_prolong_(-1),
       theta_(0),
       eps0_(0),
-      r0_(0),
+      // r0_(0),
       is_volume_(-1),
       block_volume_(),
       max_volume_(0),
       interp_xpoints_(64),
-      interp_ypoints_(2),
-      interp_zpoints_(2),
+      interp_ypoints_(64),
+      interp_zpoints_(64),
       dt_max_(1.0e10),
       ir_exit_(-1)
   { for (int i = 0; i < cello::num_children(); i++) i_msg_restrict_[i] = -1; }
@@ -64,12 +52,12 @@ public: // interface -- which methods should be public and which protected?
   /// CHARM++ Pack / Unpack function
   void pup (PUP::er &p);
 
-  // ~EnzoMethodMultipole()
-  // {
-  //   if (ewald_ != nullptr) {
-  //     delete ewald_;
-  //  }
-  // }
+  ~EnzoMethodMultipole()
+  {
+    if (ewald_ != nullptr) {
+      delete ewald_;
+   }
+  }
 
   /// Apply the method to advance a block one timestep 
   virtual void compute( Block * block) throw();
@@ -206,21 +194,35 @@ protected: // methods
   // force is softened with gravitational softening length eps0 and cutoff distance r0
   std::array<double, 3> newton_force_(double mass_b, std::array<double, 3> disp) throw()
   {
-    std::array<double, 3> accel_vec;
+    std::array<double, 3> accel_vec = {};
+    double accel_scalar;
 
-    double disp_norm = sqrt(disp[0]*disp[0] + disp[1]*disp[1] + disp[2]*disp[2]);  
-    double eps = epsilon_(disp_norm, eps0_, r0_);    // softening
-    double soft_disp = disp_norm*disp_norm + eps;    // softened displacement (r^2 + eps)
-    // if (eps != 0) CkPrintf("eps != 0\n");
+    double disp_norm = sqrt(disp[0]*disp[0] + disp[1]*disp[1] + disp[2]*disp[2]); 
+    if (disp_norm == 0) {
+      return accel_vec;
+    }
+
+    double h = 2.8 * eps0_;
+
+    if (disp_norm < h) {
+      accel_scalar = mass_b * W2_(disp_norm / h) / (h*h);
+    }
+    else {
+      accel_scalar = mass_b / (disp_norm*disp_norm);
+    }
+
+    // double eps = epsilon_(disp_norm, eps0_, r0_);    // softening
+    // double soft_disp = disp_norm*disp_norm + eps;    // softened displacement (r^2 + eps)
+    // // if (eps != 0) CkPrintf("eps != 0\n");
     
     
     // computing m/(disp_norm^2 + eps) * disp_hat
     // grav constant (and scale factor) are included in .cpp
-    double accel_scalar = mass_b / (soft_disp * disp_norm);    
+    //double accel_scalar = mass_b / (soft_disp * disp_norm);    
     
-    accel_vec[0] = accel_scalar * disp[0];
-    accel_vec[1] = accel_scalar * disp[1];
-    accel_vec[2] = accel_scalar * disp[2];
+    accel_vec[0] = accel_scalar * disp[0] / disp_norm;
+    accel_vec[1] = accel_scalar * disp[1] / disp_norm;
+    accel_vec[2] = accel_scalar * disp[2] / disp_norm;
 
     return accel_vec;
   }
@@ -229,17 +231,17 @@ protected: // methods
      r is the displacement and eps0 is the softening length. 
      The softening has a finite range, going to 0 for distances greater than 
      r0 (with r0 being smaller than half the smallest box dimension)  */
-   double epsilon_(double r, double eps0, double r0)
-   {
-    // r0 = 0 if not specified in input file
-    if (r >= r0)
-      return 0; 
+  //  double epsilon_(double r, double eps0, double r0)
+  //  {
+  //   // r0 = 0 if not specified in input file
+  //   if (r >= r0)
+  //     return 0; 
       
-    else {
-      double h = 2.8 * eps0;
-      return h*h / W2_(r / h) - r*r; // check sign -- always positive
-    }
-   }
+  //   else {
+  //     double h = 2.8 * eps0;
+  //     return h*h / W2_(r / h) - r*r; // check sign -- always positive
+  //   }
+  //  }
 
   /* Kernel for gravitational softening 
   (gradient of potential from Springel, Yoshida, White 2001) */
@@ -672,8 +674,8 @@ protected: // attributes
   /// Gravitational softening length
   double eps0_;
 
-  /// Cutoff distance for gravitational softening
-  double r0_;
+  /// Cutoff distance for gravitational softening -- unnecessary, since r0 = 2.8*eps0_
+  // double r0_;
 
   // /// Minimum/maximum mesh refinement level (saved for efficiency)  !!! include this!
   // int min_level_;

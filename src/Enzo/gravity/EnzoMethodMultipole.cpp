@@ -213,8 +213,8 @@ void EnzoMethodMultipole::compute ( Block * block) throw()
   int nb3[3] = {1,1,1};
   cello::hierarchy()->root_blocks(nb3,nb3+1,nb3+2);
   max_volume_ = nb3[0]*nb3[1]*nb3[2];
-  max_volume_ *= block_volume_[0];  // in James' code, this is block_volume_[max_level_ - min_level_]; 
-                                    // the index should probably just be -min_level_
+  max_volume_ *= block_volume_[0];  // the index should probably just be -min_level_ 
+                                    
 
   *volume_(block) = 0;
 

@@ -21,9 +21,10 @@ EnzoMethodMultipole::EnzoMethodMultipole (ParameterGroup p)
     is_volume_(-1),
     block_volume_(),
     max_volume_(0),
-    interp_xpoints_(p.value_integer("interp_xpoints", 64)),
-    interp_ypoints_(p.value_integer("interp_ypoints", 64)),
-    interp_zpoints_(p.value_integer("interp_zpoints", 64)),
+    interp_xpoints_(p.value_integer("interp_xpoints", 32)),
+    interp_ypoints_(p.value_integer("interp_ypoints", 32)),
+    interp_zpoints_(p.value_integer("interp_zpoints", 32)),
+    ewald_order_(p.value_integer("ewald_order", 3)),
     dt_max_(p.value_float("dt_max", 1.0e10)),
     ir_exit_(-1)
 {
@@ -80,6 +81,10 @@ EnzoMethodMultipole::EnzoMethodMultipole (ParameterGroup p)
 
   ewald_ = nullptr;
 
+  ASSERT1("EnzoMethodMultipole",
+          "Method:multipole:ewald_order must be 3 or 4 (it is %d)",
+          ewald_order_, (ewald_order_ == 3 || ewald_order_ == 4));
+
 }
 
 //----------------------------------------------------------------------
@@ -114,6 +119,7 @@ void EnzoMethodMultipole::pup (PUP::er &p)
   p | interp_xpoints_;
   p | interp_ypoints_;
   p | interp_zpoints_;
+  p | ewald_order_;
   p | dt_max_;
 
   // bool ewald_is_nullptr = (ewald_ == nullptr);
@@ -313,7 +319,8 @@ void EnzoMethodMultipole::compute ( Block * block) throw()
     // dimensions of the downsampled interpolation grid as input parameters.
     // Then copy (or move if the compiler is smart) the result into this->ewald_
 
-    ewald_ = new EnzoEwald (interp_xpoints_, interp_ypoints_, interp_zpoints_);
+    ewald_ = new EnzoEwald (interp_xpoints_, interp_ypoints_, interp_zpoints_,
+                            ewald_order_);
 
   } 
   
@@ -488,6 +495,11 @@ void EnzoMethodMultipole::begin_up_cycle_(EnzoBlock * enzo_block) throw()
   }
 
 
+  // The volume is initialized before the barrier: after it, other Blocks may
+  // already be sending update_volume() to this one, before this Block has
+  // itself received the barrier's broadcast.
+  *volume_(enzo_block) = block_volume_[level];
+
   CkCallback callback(CkIndex_EnzoBlock::r_method_multipole_dualwalk_barrier(nullptr),
 		      enzo::block_array());
   enzo::block(enzo_block)->contribute(callback);
@@ -509,8 +521,6 @@ void EnzoMethodMultipole::dual_walk_(EnzoBlock * enzo_block) throw()
 
   const Index& index = enzo_block->index();
   int level = enzo_block->level();
-
-  *volume_(enzo_block) = block_volume_[level];
 
   // if level == min_level_
   if (level == 0) {
@@ -537,8 +547,9 @@ void EnzoMethodMultipole::dual_walk_(EnzoBlock * enzo_block) throw()
             }
             else {
               // start the dual tree walk on all pairs of root blocks, including self-interactions
-              int type = enzo_block->is_leaf() ? 1 : 0;
-              enzo::block_array()[index].p_method_multipole_traverse(other_ind, type);
+              // whether the other root block is a leaf is not known here
+              // (-1): traverse() asks it
+              enzo::block_array()[index].p_method_multipole_traverse(other_ind, -1);
             }
           }
         }
@@ -560,13 +571,26 @@ void EnzoMethodMultipole::dual_walk_(EnzoBlock * enzo_block) throw()
   }
 
   if (! enzo_block->is_leaf()) {
-    
+
     // traverse terminates when all leaf blocks done. Since we use a
     // barrier on all blocks, we call the barrier now on all non-leaf
     // blocks
     CkCallback callback(CkIndex_EnzoBlock::r_method_multipole_traverse_complete(nullptr),
 			enzo::block_array());
     enzo::block(enzo_block)->contribute(callback);
+  }
+  else {
+
+    int nx, ny, nz;
+    cello::hierarchy()->root_blocks(&nx, &ny, &nz);
+
+    // A leaf is complete only after this callback has run (other Blocks
+    // may have credited it all of its volume before): credit the extra
+    // unit of volume that update_volume() waits for. (A lone root Block
+    // that is a leaf does not wait for update_volume().)
+    if (level > 0 || nx*ny*nz != 1) {
+      update_volume (enzo_block, index, 1);
+    }
   }
 }
 
@@ -608,6 +632,8 @@ void EnzoMethodMultipole::begin_down_cycle_(EnzoBlock * enzo_block) throw()
 
   else {
     prolong_send (enzo_block);
+    // non-leaf Blocks take no further part in this Method
+    enzo_block->compute_done();
   }
   
 }
@@ -1755,6 +1781,11 @@ void EnzoMethodMultipole::traverse
   if (index_a == index_b) {
     // CkPrintf("root double loop\n");
 
+    // A leaf has no children to pair up. Messages sent to the (not yet
+    // existing) children of a leaf are held by Charm++ until they are
+    // created by a later refinement, and then delivered to them.
+    if (is_leaf_a) return;
+
     // loop 1 through A children
     while (it_child_a.next(ica3)) {
       int ica = ica3[0] + 2*(ica3[1] + 2*ica3[2]);
@@ -1840,26 +1871,35 @@ void EnzoMethodMultipole::traverse_approx_pair
  Index index_b, int volume_b)
 {
 
+  // update volumes for each block to detect when to terminate traverse.
+  // The volume of each Block is carried by the interaction message to the
+  // other one, which credits it after applying the interaction (see
+  // p_method_multipole_interact_approx()), so that a Block cannot be counted as
+  // complete before the interaction has been applied. (Messages between
+  // two Blocks are not guaranteed to arrive in the order they were sent.)
+
   // compute the a->b interaction
   MultipoleMsg * msg_a = pack_multipole_(enzo_block);
+  // (note blocks may be equal, so don't double-count)
+  msg_a->volume = (index_a != index_b) ? volume_a : 0;
   enzo::block_array()[index_b].p_method_multipole_interact_approx(msg_a);
 
   // compute the b->a interaction; can we exploit symmetry here?
   enzo::block_array()[index_b].p_method_multipole_interact_approx_send (index_a);
 
-  // update volumes for each block to detect when to terminate traverse
-  update_volume (enzo_block,index_b,volume_b);
-
-  // do we need to check if blocks are equal?
-  if (index_a != index_b) {
-    enzo::block_array()[index_b].p_method_multipole_update_volume (index_a,volume_a);
+  if (index_a == index_b) {
+    update_volume (enzo_block,index_b,volume_b);
   }
 }
 
 void EnzoBlock::p_method_multipole_interact_approx (MultipoleMsg * msg)
 {
   EnzoMethodMultipole * method = static_cast<EnzoMethodMultipole*> (this->method());
+  const int volume = msg->volume;
   method->interact_approx_ (this, msg);
+  if (volume != 0) {
+    method->update_volume (this, this->index(), volume);
+  }
 }
 
 void EnzoBlock::p_method_multipole_interact_approx_send (Index receiver)
@@ -1871,6 +1911,8 @@ void EnzoBlock::p_method_multipole_interact_approx_send (Index receiver)
 void EnzoMethodMultipole::interact_approx_send(EnzoBlock * enzo_block, Index receiver) throw()
 {
   MultipoleMsg * msg = pack_multipole_(enzo_block);
+  // credited by the receiver after it has applied the multipole
+  msg->volume = block_volume_[enzo_block->level()];
   enzo::block_array()[receiver].p_method_multipole_interact_approx(msg);
 }
 
@@ -1964,9 +2006,13 @@ void EnzoMethodMultipole::interact_approx_(Block * block, MultipoleMsg * msg_b) 
     //CkPrintf("d1_ewald in interact_approx: %f, %f, %f\n", d1_ewald[0], d1_ewald[1], d1_ewald[2]);
     
     // Combine the derivative tensors from the periodic and non-periodic contributions    
-    d1 = add_11_(d1, d1_ewald);
-    d2 = add_22_(d2, d2_ewald);
-    d3 = add_33_(d3, d3_ewald);
+    // The tables hold the derivatives of n(W) = 1/|W| - V_per(W), so those
+    // of the periodic Green's function V_per are the Newtonian ones minus
+    // the tabulated ones (the direct sums add +grad n to the acceleration
+    // for the same reason).
+    d1 = add_11_(d1, dot_scalar_1_(-1.0, d1_ewald));
+    d2 = add_22_(d2, dot_scalar_2_(-1.0, d2_ewald));
+    d3 = add_33_(d3, dot_scalar_3_(-1.0, d3_ewald));
   }
   
   // compute the coefficients of the Taylor expansion of acceleration due to the particles in Block b
@@ -2001,36 +2047,47 @@ void EnzoMethodMultipole::traverse_direct_pair
  Index index_a, int volume_a,
  Index index_b, int volume_b)
 {
+  // update volumes for each block to detect when to terminate traverse.
+  // The volume is carried by the interaction message and credited by the
+  // receiver after applying it (see traverse_approx_pair()).
+
   // compute the a->b interaction
-  pack_dens_(enzo_block, index_b);
+  // (note blocks may be equal, so don't double-count)
+  pack_dens_(enzo_block, index_b, (index_a != index_b) ? volume_a : 0);
 
   // compute the b->a interaction; any way to exploit symmetry here?
   enzo::block_array()[index_b].p_method_multipole_interact_direct_send (index_a);
 
-  // update volumes for each block to detect when to terminate traverse
-  update_volume (enzo_block,index_b,volume_b);
-  if (index_a != index_b) {
-    // (note blocks may be equal, so don't double-count)
-    enzo::block_array()[index_b].p_method_multipole_update_volume (index_a,volume_a);
+  if (index_a == index_b) {
+    update_volume (enzo_block,index_b,volume_b);
   }
 
 }
 
-void EnzoBlock::p_method_multipole_interact_direct (int fldsize, int prtsize, char * fldbuffer, char * prtbuffer)
+void EnzoBlock::p_method_multipole_interact_direct (int volume, int fldsize, int prtsize, char * fldbuffer, char * prtbuffer)
 {
   EnzoMethodMultipole * method = static_cast<EnzoMethodMultipole*> (this->method());
   method->interact_direct_ (this, fldbuffer, prtbuffer);
+  if (volume != 0) {
+    method->update_volume (this, this->index(), volume);
+  }
 }
 
 void EnzoBlock::p_method_multipole_interact_direct_send (Index receiver)
 {
   EnzoMethodMultipole * method = static_cast<EnzoMethodMultipole*> (this->method());
-  method->pack_dens_ (this, receiver);
+  method->interact_direct_send (this, receiver);
+}
+
+void EnzoMethodMultipole::interact_direct_send(EnzoBlock * enzo_block, Index receiver) throw()
+{
+  // the receiver credits this volume after applying the data
+  pack_dens_ (enzo_block, receiver, block_volume_[enzo_block->level()]);
 }
 
 
 
-void EnzoMethodMultipole::pack_dens_(EnzoBlock * enzo_block, Index index_b) throw()
+void EnzoMethodMultipole::pack_dens_(EnzoBlock * enzo_block, Index index_b, int volume) throw()
 {
 
   Data * data = enzo_block->data();
@@ -2097,7 +2154,11 @@ void EnzoMethodMultipole::pack_dens_(EnzoBlock * enzo_block, Index index_b) thro
   char * prtbuffer = new char[prtsize];
   char * prtbuffer_next = particle.save_data(prtbuffer);
 
-  enzo::block_array()[index_b].p_method_multipole_interact_direct (fldsize, prtsize, fldbuffer, prtbuffer);
+  enzo::block_array()[index_b].p_method_multipole_interact_direct (volume, fldsize, prtsize, fldbuffer, prtbuffer);
+
+  // the entry method call copies the arrays into its message
+  delete [] fldbuffer;
+  delete [] prtbuffer;
 }
 
 
@@ -2597,7 +2658,8 @@ void EnzoMethodMultipole::update_volume
 
     *volume_(enzo_block) += volume;
 
-    if (*volume_(enzo_block) == max_volume_) {
+    // max_volume_ plus the unit credited by this Block's own dual_walk_()
+    if (*volume_(enzo_block) == max_volume_ + 1) {
 
       CkCallback callback(CkIndex_EnzoBlock::r_method_multipole_traverse_complete(nullptr),
 			        enzo::block_array());

@@ -42,10 +42,14 @@ public: // interface -- which methods should be public and which protected?
       is_volume_(-1),
       block_volume_(),
       max_volume_(0),
-      interp_xpoints_(64),
-      interp_ypoints_(64),
-      interp_zpoints_(64),
+      interp_xpoints_(32),
+      interp_ypoints_(32),
+      interp_zpoints_(32),
+      ewald_order_(3),
+      ewald_(nullptr),
       dt_max_(1.0e10),
+      leaf_chunk_(0),
+      leaf_theta_(0.5),
       ir_exit_(-1)
   { for (int i = 0; i < cello::num_children(); i++) i_msg_restrict_[i] = -1; }
 
@@ -189,75 +193,6 @@ protected: // methods
 
   void refresh_acceleration_ (EnzoBlock * enzo_block) throw();
 
-  // compute the Newtonian acceleration induced on this cell/particle by Cell/Particle B.
-  // disp points from this mass to mass_b (i.e., disp_x = x_b - x).
-  // force is softened with gravitational softening length eps0 and cutoff distance r0
-  std::array<double, 3> newton_force_(double mass_b, std::array<double, 3> disp) throw()
-  {
-    std::array<double, 3> accel_vec = {};
-    double accel_scalar;
-
-    double disp_norm = sqrt(disp[0]*disp[0] + disp[1]*disp[1] + disp[2]*disp[2]); 
-    if (disp_norm == 0) {
-      return accel_vec;
-    }
-
-    double h = 2.8 * eps0_;
-
-    if (disp_norm < h) {
-      accel_scalar = mass_b * W2_(disp_norm / h) / (h*h);
-    }
-    else {
-      accel_scalar = mass_b / (disp_norm*disp_norm);
-    }
-
-    // double eps = epsilon_(disp_norm, eps0_, r0_);    // softening
-    // double soft_disp = disp_norm*disp_norm + eps;    // softened displacement (r^2 + eps)
-    // // if (eps != 0) CkPrintf("eps != 0\n");
-    
-    
-    // computing m/(disp_norm^2 + eps) * disp_hat
-    // grav constant (and scale factor) are included in .cpp
-    //double accel_scalar = mass_b / (soft_disp * disp_norm);    
-    
-    accel_vec[0] = accel_scalar * disp[0] / disp_norm;
-    accel_vec[1] = accel_scalar * disp[1] / disp_norm;
-    accel_vec[2] = accel_scalar * disp[2] / disp_norm;
-
-    return accel_vec;
-  }
-
-  /* [Negative gradient of the] Gravitational softening law from Springel et al. 2013; 
-     r is the displacement and eps0 is the softening length. 
-     The softening has a finite range, going to 0 for distances greater than 
-     r0 (with r0 being smaller than half the smallest box dimension)  */
-  //  double epsilon_(double r, double eps0, double r0)
-  //  {
-  //   // r0 = 0 if not specified in input file
-  //   if (r >= r0)
-  //     return 0; 
-      
-  //   else {
-  //     double h = 2.8 * eps0;
-  //     return h*h / W2_(r / h) - r*r; // check sign -- always positive
-  //   }
-  //  }
-
-  /* Kernel for gravitational softening 
-  (gradient of potential from Springel, Yoshida, White 2001) */
-   double W2_(double u)
-   {
-    if ((u >= 0) && (u < 0.5))
-      return 32./3 * u - 192./5 * pow(u,3) + 32. * pow(u,4);
-      
-    else if ((u >= 0.5) && (u < 1))
-      return -1./15 * pow(u,-2) + 64./3 * u - 48 * pow(u,2) + 192./5 * pow(u,3) - 32./3 * pow(u,4);
-      
-    else // if u >= 1
-      return 1./(u*u);
-   }
-
-
   /********** functions for dual tree walk **********/
 
 public:
@@ -266,6 +201,8 @@ public:
   void interact_direct_ (Block * block, char * fldbuffer_b, char * prtbuffer_b) throw(); // compute Newtonian force directly for two interacting leaves
 
   void interact_approx_send(EnzoBlock * enzo_block, Index receiver) throw();
+
+  void interact_direct_send(EnzoBlock * enzo_block, Index receiver) throw();
 
   void dual_walk_ (EnzoBlock * enzo_block) throw();
 
@@ -282,7 +219,7 @@ public:
                             Index index_a, int volume_a,
                             Index index_b, int volume_b);
 
-  void pack_dens_ (EnzoBlock * enzo_block, Index index_b) throw(); 
+  void pack_dens_ (EnzoBlock * enzo_block, Index index_b, int volume) throw();
 
   void update_volume (EnzoBlock * enzo_block, Index index, int volume);
 
@@ -697,11 +634,22 @@ protected: // attributes
   int interp_ypoints_;
   int interp_zpoints_;
 
+  /// order (3 or 4) of the Taylor expansion about the nearest grid point
+  /// used to interpolate the first derivative of the Ewald correction
+  int ewald_order_;
+
   /// object for storing interpolation grid needed for Ewald summation (periodic BCs)
   EnzoEwald * ewald_;
 
   /// Maximum timestep
   double dt_max_;
+
+  /// Tree-based leaf-leaf interaction (see EnzoMethodMultipoleSubtree.hpp).
+  /// Each leaf Block is divided into chunks of leaf_chunk_^3 cells that form a
+  /// local octree, and a dual tree walk with opening angle leaf_theta_
+  /// replaces the brute-force sums. leaf_chunk_ = 0 (default) turns it off.
+  int leaf_chunk_;
+  double leaf_theta_;
 
 };
 
